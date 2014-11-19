@@ -3,3 +3,8 @@
 
 *.asm
 *.so
+
+
+*~
+
+Cats_out
