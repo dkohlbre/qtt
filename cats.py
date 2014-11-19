@@ -1,4 +1,4 @@
-
+#!/usr/bin/python
 import argparse
 import subprocess
 
@@ -52,15 +52,16 @@ def c_snippet(args):
     args_s = ''.join([x+"," for x in argnames])[:-1]
 
     includes_s = ""
-    for i in args.includefiles.split(','):
-        if "\"" not in i:
-            if i[-2:] != ".h":
-                includes_s += "#include <"+i+".h>\n"
+    if includes_s != "":
+        for i in args.includefiles.split(','):
+            if "\"" not in i:
+                if i[-2:] != ".h":
+                    includes_s += "#include <"+i+".h>\n"
+                else:
+                    includes_s += "#include <"+i+">\n"
             else:
-                includes_s += "#include <"+i+">\n"
-        else:
-            includes_s += "#include "+i+"\n"
-
+                includes_s += "#include "+i+"\n"
+    print includes_s
     # generate tests
     testruns_s = ''
     tests = args.arglist.split('),(')
