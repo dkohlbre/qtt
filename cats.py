@@ -29,8 +29,23 @@ def gcc_build(args):
     if args.libfile != '':
         gccstring += args.libfile+" "
     gccstring +=args.tmpfile
-    proc = subprocess.Popen(gccstring,shell=True)
-    return 0
+    proc = subprocess.Popen(gccstring,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+
+    while proc.returncode == None:
+        (stdout,stderr) = proc.communicate()
+        if stdout is not None or stderr is not None:
+            for l in stdout.split('\n'):
+                if l != '':
+                    print "[GCC] "+l
+            for l in stderr.split('\n'):
+                if l != '':
+                    print "[GCC] "+l
+
+    if proc.returncode < 0:
+        print_info("Building failed!")
+    elif proc.returncode > 0:
+        print_info("Building has problems...")
+    return proc.returncode
 
 def c_snippet(args):
 
