@@ -5,7 +5,7 @@ import subprocess
 HOST_C_FILE = "timer.c"
 
 def print_info(s):
-    print "[CATS] "+s
+    print "[QTT] "+s
 
 def print_unimp(fn):
     print_info(fn+" is unimplemented.")
@@ -23,7 +23,7 @@ def replace_file(fin,fout,reps):
     fo.close()
 
 def gcc_build(args):
-    gccstring = "gcc -O -fforce-addr -std=c99 -o Cats_out -I. -L. "
+    gccstring = "gcc -O -fforce-addr -std=c99 -o qtt_out -I. -L. "
     if args.addfile != '':
         gccstring += "--include "+args.addfile+" "
     if args.libfile != '':
@@ -42,7 +42,7 @@ def gcc_build(args):
                     print "[GCC] "+l
 
     if proc.returncode < 0:
-        print_info("Building failed!")
+        print_info("Building failed! See "+args.tmpfile)
     elif proc.returncode > 0:
         print_info("Building has problems...")
     return proc.returncode
@@ -76,13 +76,17 @@ def c_snippet(args):
                     includes_s += "#include <"+i+">\n"
             else:
                 includes_s += "#include "+i+"\n"
-    print includes_s
     # generate tests
     testruns_s = ''
     tests = args.arglist.split('),(')
+
+    # find longest args
+    m_len = reduce(lambda a,v: min(len(v),a),tests)
+
     for a in tests:
         t = a.replace('(','').replace(')','')
-        testruns_s += "printf(\""+args.cfunction+" ("+t.replace('"','\\"')+")      %f\\n\", __run_test("+args.cfunction+","+t+"));\n"
+        testruns_s += "printf(\""+args.cfunction+" ("+t.replace('"','\\"')+")"+' '*(m_len-len(t)+2)+"%f\\n\","
+        testruns_s +="__run_test("+args.cfunction+","+t+"));\n"
 
     # Build a C file
     replace_file(HOST_C_FILE,args.tmpfile,[
@@ -133,7 +137,7 @@ def getargs():
                         help='Comma separated list of #includes required to build')
 
     parser.add_argument('--tmpfile', dest='tmpfile', action='store',metavar='name',
-                        type=str, default="/tmp/Cats_gen.c",
+                        type=str, default="/tmp/qtt_gen.c",
                         help='Temporary C file passed into gcc, defaults to in /tmp')
 
 
@@ -141,9 +145,12 @@ def getargs():
     return args
 
 
-args = getargs()
+if __name__ == "__main__":
+    args = getargs()
 
-if args.cfunction != None:
-    c_snippet(args)
-elif args.asmcode != None:
-    asm_snippet(args)
+    if args.cfunction != None:
+        r = c_snippet(args)
+    elif args.asmcode != None:
+        r = asm_snippet(args)
+    if r == 0:
+        print_info("Seems like everything worked! Run ./qtt_out")
