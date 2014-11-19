@@ -3,6 +3,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include <stdlib.h>
+INCLUDES_HERE
 
 #define PERF_ITRS 2000000
 
@@ -18,7 +19,8 @@ static inline uint64_t rdtscp(){
   return v;
 }
 
-double run_test(RETTYPE (*function) (RAWTYPES),TYPEDARGS){
+
+double __run_test(RETTYPE (*function) (RAWTYPES),TYPEDARGS){
   int ctr = 0;
   uint8_t real = 0;
   uint64_t st;
