@@ -5,7 +5,7 @@ Time C stuff, really accurately, really easily.
 
 Example Usage
 -------------
-./qtt.py -c atof "double (char*)" '("1"),("100000000.23242")'
+./qtt.py -c atof "double (const char*)" '("1"),("100000000.23242")'
 
 
 What?
