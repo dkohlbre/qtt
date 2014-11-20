@@ -1,6 +1,8 @@
-=Quick, Time This=
+ Quick, Time This
+==================
 Time C stuff, really accurately, really easily.
 
 
-== Example Usage ==
+Example Usage
+-------------
 ./qtt.py -c atof "double (char*)" "(\"1\"),(\"100000000.23242\")"
