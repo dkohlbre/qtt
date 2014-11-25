@@ -22,88 +22,163 @@ def replace_file(fin,fout,reps):
     fi.close()
     fo.close()
 
-def gcc_build(args):
-    gccstring = "gcc -O -fforce-addr -std=c99 -o qtt_out -I. -L. "
-    if args.addfile != '':
-        gccstring += "--include "+args.addfile+" "
-    if args.libfile != '':
-        gccstring += args.libfile+" "
-    gccstring +=args.tmpfile
-    proc = subprocess.Popen(gccstring,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+class QTT:
+    all_add_gcc_files =""
+    all_includes = ""
+    all_tests = ""
+    all_testcalls = ""
+    temp_file = ""
 
-    while proc.returncode == None:
-        (stdout,stderr) = proc.communicate()
-        if stdout is not None or stderr is not None:
-            for l in stdout.split('\n'):
-                if l != '':
-                    print "[GCC] "+l
-            for l in stderr.split('\n'):
-                if l != '':
-                    print "[GCC] "+l
-
-    if proc.returncode < 0:
-        print_info("Building failed! See "+args.tmpfile)
-    elif proc.returncode > 0:
-        print_info("Building has problems...")
-    return proc.returncode
-
-def c_snippet(args):
-
-    if ":" in args.cfunction:
-        f = args.cfunction.split(':')[1]
-        if f [-2:] == '.c':
-            args.addfile = f
-        elif f [-3:] == '.so':
-            args.libfile = f
-        else:
-            print_info("I don't know how to add file:\""+s+"\"")
-            return -1
-        args.cfunction = args.cfunction.split(':')[0]
-
-    ret_s = args.typestring.split('(')[0]
-    types_s = args.typestring.split('(')[1].split(')')[0]
-    argnames = map(chr, range(0x61, 0x61+(len(types_s.split(',')))))
-    typedargs_s = ''.join([x+" "+y+',' for (x,y) in zip(types_s.split(','),argnames)])[:-1]
-    args_s = ''.join([x+"," for x in argnames])[:-1]
-
-    includes_s = ""
-    if includes_s != "":
-        for i in args.includefiles.split(','):
-            if "\"" not in i:
-                if i[-2:] != ".h":
-                    includes_s += "#include <"+i+".h>\n"
+    def gcc_build(self):
+        gccstring = "gcc -O -fforce-addr -std=c99 -o a.qtt -I. -L. "
+        for f in self.all_add_gcc_files:
+            if f != "":
+                if f[-2:] == '.c':
+                    gccstring += "--include "+f+" "
+                elif f[-3:] == ".so":
+                    gccstring += f+" "
                 else:
-                    includes_s += "#include <"+i+">\n"
+                    print_unimp("File type:"+f)
+                    return -1
+
+        gccstring +=self.temp_file
+        proc = subprocess.Popen(gccstring,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+
+        while proc.returncode == None:
+            (stdout,stderr) = proc.communicate()
+            if stdout is not None or stderr is not None:
+                for l in stdout.split('\n'):
+                    if l != '':
+                        print "[GCC] "+l
+                for l in stderr.split('\n'):
+                    if l != '':
+                        print "[GCC] "+l
+
+        if proc.returncode < 0:
+            print_info("Building failed! See "+self.temp_file)
+        elif proc.returncode > 0:
+            print_info("Building has problems...")
+        return proc.returncode
+
+    def extract_c_data(self,cfunction,includefiles):
+        addfile = ""
+        if ":" in cfunction:
+            f = cfunction.split(':')[1]
+            if f [-2:] == '.c':
+                addfile = f
+            elif f [-3:] == '.so':
+                addfile = f
             else:
-                includes_s += "#include "+i+"\n"
-    # generate tests
-    testruns_s = ''
-    tests = args.arglist.split('),(')
+                print_info("I don't know how to add file:\""+s+"\"")
+                return -1
+            cfunction = cfunction.split(':')[0]
 
-    # find longest args
-    m_len = reduce(lambda a,v: min(len(v),a),tests)
+        includes_s = ""
+        if includes_s != "":
+            for i in includefiles.split(','):
+                if "\"" not in i:
+                    if i[-2:] != ".h":
+                        includes_s += "#include <"+i+".h>\n"
+                    else:
+                        includes_s += "#include <"+i+">\n"
+                else:
+                    includes_s += "#include "+i+"\n"
 
-    for a in tests:
-        t = a.replace('(','').replace(')','')
-        testruns_s += "printf(\""+args.cfunction+" ("+t.replace('"','\\"')+")"+' '*(m_len-len(t)+2)+"%f\\n\","
-        testruns_s +="__run_test("+args.cfunction+","+t+"));\n"
+        return (cfunction,addfile,includes_s)
 
-    # Build a C file
-    replace_file(HOST_C_FILE,args.tmpfile,[
-        ("INCLUDES_HERE",includes_s),
-        ("RETTYPE",ret_s),
-        ("RAWTYPES",types_s),
-        ("TYPEDARGS",typedargs_s),
-        ("REALARGS",args_s),
-        ("TESTRUNS",testruns_s)])
+    def c_snippet(self,cfunction,typestring,arglist,testnum):
 
-    #Build tmpfile
-    return gcc_build(args)
+        ret_s = typestring.split('(')[0]
+        types_s = typestring.split('(')[1].split(')')[0]
+        argnames = map(chr, range(0x61, 0x61+(len(types_s.split(',')))))
+        typedargs_s = ''.join([x+" "+y+',' for (x,y) in zip(types_s.split(','),argnames)])[:-1]
+        args_s = ''.join([x+"," for x in argnames])[:-1]
+
+        # generate tests
+        testruns_s = ''
+        tests = arglist.split('),(')
+
+        # find longest args
+        m_len = reduce(lambda a,v: min(len(v),a),tests)
+
+        for a in tests:
+            t = a.replace('(','').replace(')','')
+            testruns_s += "printf(\""+cfunction+" ("+t.replace('"','\\"')+")"+' '*(m_len-len(t)+2)+"%f\\n\","
+            testruns_s +="__run_test_"+str(testnum)+"("+cfunction+","+t+"));\n"
+
+        # C test function
+        # double __run_test(RETTYPE (*function) (RAWTYPES),TYPEDARGS){
+        #   int ctr = 0;
+        #   uint8_t real = 0;
+        #   uint64_t st;
+        #   uint64_t end;
+        #   uint64_t offset;
+        #  runme:
+        #   st = rdtscp();
+        #   /* Offset for running the loop and rdtscp */
+        #   for(ctr=0;ctr<PERF_ITRS;ctr++){
+        #   }
+        #   end = rdtscp();
+        #   offset = end-st;
+        #   st = rdtscp();
+        #   for(ctr=0;ctr<PERF_ITRS;ctr++){
+        #     (*function)(REALARGS);
+        #   }
+        #   end = rdtscp();
+        #   if(real == 0){ real = 1; goto runme;}
+        #   /* Run everything for real, previous was just warmup */
+        #   return (end-st-offset)/(float)PERF_ITRS;
+        # }
+
+        functext = "double __run_test_"+str(testnum)+"("+ret_s+" (*function) ("+types_s+"),"+typedargs_s+"){\n"
+        functext +="  int ctr = 0;\n"
+        functext +="  uint8_t real = 0;\n"
+        functext +="  uint64_t st;\n"
+        functext +="  uint64_t end;\n"
+        functext +="  uint64_t offset;\n"
+        functext +=" runme:\n"
+        functext +="  st = rdtscp();\n"
+        functext +="  /* Offset for running the loop and rdtscp */\n"
+        functext +="  for(ctr=0;ctr<PERF_ITRS;ctr++){\n"
+        functext +="  }\n"
+        functext +="  end = rdtscp();\n"
+        functext +="  offset = end-st;\n"
+        functext +="  st = rdtscp();\n"
+        functext +="  for(ctr=0;ctr<PERF_ITRS;ctr++){\n"
+        functext +="    (*function)("+args_s+");\n"
+        functext +="  }\n"
+        functext +="  end = rdtscp();\n"
+        functext +="  if(real == 0){ real = 1; goto runme;}\n"
+        functext +="  /* Run everything for real, previous was just warmup */\n"
+        functext +="  return (end-st-offset)/(float)PERF_ITRS;\n"
+        functext +="}"
 
 
-def asm_snippet(args):
-    print args.asmcode
-    print_unimp("ASM snippets")
+        return (testruns_s,functext)
+
+
+    def add_c_test(self,tmpfile,cfunction,includefiles,typestring,arglist):
+
+        self.temp_file = tmpfile
+
+        (cfun,addfile,inc) = self.extract_c_data(cfunction,includefiles)
+        self.all_add_gcc_files += addfile
+        self.all_includes += inc
+
+        (tests,funtext) = self.c_snippet(cfun,typestring,arglist,0)
+        self.all_tests += funtext
+        self.all_testcalls += tests
+
+        replace_file(HOST_C_FILE,self.temp_file,[
+            ("INCLUDES_HERE",self.all_includes),
+            ("TESTFUNCTIONS",self.all_tests),
+            ("TESTRUNS",self.all_testcalls)])
+
+        return self.gcc_build()
+
+    def asm_snippet(self,args):
+        print args.asmcode
+        print_unimp("ASM snippets")
 
 
 def getargs():
@@ -148,9 +223,11 @@ def getargs():
 if __name__ == "__main__":
     args = getargs()
 
+    timer = QTT()
+
     if args.cfunction != None:
-        r = c_snippet(args)
+        r = timer.add_c_test(args.tmpfile,args.cfunction,args.includefiles,args.typestring,args.arglist)
     elif args.asmcode != None:
         r = asm_snippet(args)
     if r == 0:
-        print_info("Seems like everything worked! Run ./qtt_out")
+        print_info("Seems like everything worked! Run ./a.qtt")
