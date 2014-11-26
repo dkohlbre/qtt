@@ -7,10 +7,11 @@ Example Usage
 -------------
 ./qtt.py -c atof "double (const char*)" '("1"),("100000000.23242")'
 
+./qtt.py -c pow -i math.h -l /usr/lib/x86_64-linux-gnu/libm.so "double (double,double)" '(1,2),(5,4)'
 
 What?
 ======
-Time your C functions!
+Time your (or standard) C functions!
 
 This is terrible!
 -----------------
@@ -20,6 +21,8 @@ How do I use it?
 ----------------
 It doesn't have install yet, run it from the checkout directory.
 
-It should work on all x86-64 systems.
+It should work on all x86_64 systems.
 
-./qtt.py --help does a thing
+Support for using QTT as a library should be ready soon.
+
+./qtt.py --help is pretty helpful
