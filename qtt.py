@@ -171,7 +171,7 @@ class QTT:
         return (testruns_s,functext)
 
 
-    def add_c_test(self,tmpfile,cfunction,includefiles,typestring,arglist,libfiles):
+    def add_c_test(self,cfunction,typestring,arglist,libfiles="",includefiles="",tmpfile="/tmp/qtt_tmp.c"):
 
         self.all_add_gcc_files.append(libfiles)
         self.temp_file = tmpfile
@@ -243,7 +243,7 @@ if __name__ == "__main__":
             arglist = eval('['+args.arglist+']')
         except:
             print_info("FATAL: Cannot parse arglist argument as python tuples!")
-        timer.add_c_test(args.tmpfile,args.cfunction,args.includefiles,args.typestring,arglist,args.libfile)
+        timer.add_c_test(tmpfile=args.tmpfile,cfunction=args.cfunction,includefiles=args.includefiles,typestring=args.typestring,arglist=arglist,libfiles=args.libfile)
         r = timer.gcc_build()
     elif args.asmcode != None:
         r = timer.asm_snippet(args)
