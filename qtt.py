@@ -23,7 +23,7 @@ def replace_file(fin,fout,reps):
     fo.close()
 
 class QTT:
-    all_add_gcc_files =""
+    all_add_gcc_files =[]
     all_includes = ""
     all_tests = ""
     all_testcalls = ""
@@ -74,7 +74,7 @@ class QTT:
             cfunction = cfunction.split(':')[0]
 
         includes_s = ""
-        if includes_s != "":
+        if includefiles != "":
             for i in includefiles.split(','):
                 if "\"" not in i:
                     if i[-2:] != ".h":
@@ -86,6 +86,13 @@ class QTT:
 
         return (cfunction,addfile,includes_s)
 
+    def arg_to_string(self,a):
+        if type(a) is str:
+            return '\"'+a+'\"'
+        else:
+            return str(a)
+
+
     def c_snippet(self,cfunction,typestring,arglist,testnum):
 
         ret_s = typestring.split('(')[0]
@@ -96,15 +103,22 @@ class QTT:
 
         # generate tests
         testruns_s = ''
-        tests = arglist.split('),(')
 
         # find longest args
-        m_len = reduce(lambda a,v: min(len(v),a),tests)
+        m_len = reduce(lambda a,v: max(len(str(v)),a),arglist,0)+5
 
-        for a in tests:
-            t = a.replace('(','').replace(')','')
-            testruns_s += "printf(\""+cfunction+" ("+t.replace('"','\\"')+")"+' '*(m_len-len(t)+2)+"%f\\n\","
-            testruns_s +="__run_test_"+str(testnum)+"("+cfunction+","+t+"));\n"
+        for args in arglist:
+            arg_string = ""
+            if type(args) is tuple:
+                for a in args:
+                    arg_string += self.arg_to_string(a)+","
+            else:
+                arg_string = self.arg_to_string(args)+" "
+
+            printable_arg_string = arg_string[:-1].replace('\"','\\"')
+            testruns_s += "printf(\""+cfunction+" "+printable_arg_string
+            testruns_s += ' '*(m_len-len(printable_arg_string)+2)+"%f\\n\","
+            testruns_s +="__run_test_"+str(testnum)+"("+cfunction+","+arg_string[:-1]+"));\n"
 
         # C test function
         # double __run_test(RETTYPE (*function) (RAWTYPES),TYPEDARGS){
@@ -157,12 +171,13 @@ class QTT:
         return (testruns_s,functext)
 
 
-    def add_c_test(self,tmpfile,cfunction,includefiles,typestring,arglist):
+    def add_c_test(self,tmpfile,cfunction,includefiles,typestring,arglist,libfiles):
 
+        self.all_add_gcc_files.append(libfiles)
         self.temp_file = tmpfile
 
         (cfun,addfile,inc) = self.extract_c_data(cfunction,includefiles)
-        self.all_add_gcc_files += addfile
+        self.all_add_gcc_files.append(addfile)
         self.all_includes += inc
 
         (tests,funtext) = self.c_snippet(cfun,typestring,arglist,0)
@@ -174,14 +189,12 @@ class QTT:
             ("TESTFUNCTIONS",self.all_tests),
             ("TESTRUNS",self.all_testcalls)])
 
-        return self.gcc_build()
-
     def asm_snippet(self,args):
         print args.asmcode
         print_unimp("ASM snippets")
 
 
-def getargs():
+def qtt_getargs():
     parser = argparse.ArgumentParser(description='Time pretty much anything in C.')
 
     parser.add_argument('typestring', metavar='typestring', type=str, default=None,
@@ -221,13 +234,18 @@ def getargs():
 
 
 if __name__ == "__main__":
-    args = getargs()
+    args = qtt_getargs()
 
     timer = QTT()
 
     if args.cfunction != None:
-        r = timer.add_c_test(args.tmpfile,args.cfunction,args.includefiles,args.typestring,args.arglist)
+        try:
+            arglist = eval('['+args.arglist+']')
+        except:
+            print_info("FATAL: Cannot parse arglist argument as python tuples!")
+        timer.add_c_test(args.tmpfile,args.cfunction,args.includefiles,args.typestring,arglist,args.libfile)
+        r = timer.gcc_build()
     elif args.asmcode != None:
-        r = asm_snippet(args)
+        r = timer.asm_snippet(args)
     if r == 0:
         print_info("Seems like everything worked! Run ./a.qtt")
