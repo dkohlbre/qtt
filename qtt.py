@@ -22,14 +22,24 @@ def replace_file(fin,fout,reps):
     fi.close()
     fo.close()
 
+class QTTvar:
+    def __init__(self,s):
+        self.s = s
+
 class QTT:
     all_add_gcc_files =[]
     all_includes = ""
     all_tests = ""
     all_testcalls = ""
     temp_file = ""
+    testcount = 0
 
     def gcc_build(self):
+        replace_file(HOST_C_FILE,self.temp_file,[
+            ("INCLUDES_HERE",self.all_includes),
+            ("TESTFUNCTIONS",self.all_tests),
+            ("TESTRUNS",self.all_testcalls)])
+
         gccstring = "gcc -O -fforce-addr -std=c99 -o a.qtt -I. -L. "
         for f in self.all_add_gcc_files:
             if f != "":
@@ -89,11 +99,28 @@ class QTT:
     def arg_to_string(self,a):
         if type(a) is str:
             return '\"'+a+'\"'
+        elif isinstance(a,QTTvar):
+            return a.s
         else:
             return str(a)
 
+    def add_include(self,includefiles):
+        includes_s = ""
+        if includefiles != "":
+            for i in includefiles.split(','):
+                if "\"" not in i:
+                    if i[-2:] != ".h":
+                        includes_s += "#include <"+i+".h>\n"
+                    else:
+                        includes_s += "#include <"+i+">\n"
+                else:
+                    includes_s += "#include "+i+"\n"
+        self.all_includes += includes_s
 
-    def c_snippet(self,cfunction,typestring,arglist,testnum):
+    def add_library(self,libfiles):
+        self.all_add_gcc_files.append(libfiles)
+
+    def c_snippet(self,cfunction,typestring,arglist,setup,testnum):
 
         ret_s = typestring.split('(')[0]
         types_s = typestring.split('(')[1].split(')')[0]
@@ -103,7 +130,8 @@ class QTT:
 
         # generate tests
         testruns_s = ''
-
+        if setup != "":
+            testruns_s += setup+"\n"
         # find longest args
         m_len = reduce(lambda a,v: max(len(str(v)),a),arglist,0)+5
 
@@ -171,7 +199,7 @@ class QTT:
         return (testruns_s,functext)
 
 
-    def add_c_test(self,cfunction,typestring,arglist,libfiles="",includefiles="",tmpfile="/tmp/qtt_tmp.c"):
+    def add_c_test(self,cfunction,typestring,arglist,libfiles="",includefiles="",tmpfile="/tmp/qtt_tmp.c",setup_string=""):
 
         self.all_add_gcc_files.append(libfiles)
         self.temp_file = tmpfile
@@ -180,14 +208,11 @@ class QTT:
         self.all_add_gcc_files.append(addfile)
         self.all_includes += inc
 
-        (tests,funtext) = self.c_snippet(cfun,typestring,arglist,0)
+        (tests,funtext) = self.c_snippet(cfun,typestring,arglist,setup_string,self.testcount)
+        self.testcount +=1
         self.all_tests += funtext
         self.all_testcalls += tests
 
-        replace_file(HOST_C_FILE,self.temp_file,[
-            ("INCLUDES_HERE",self.all_includes),
-            ("TESTFUNCTIONS",self.all_tests),
-            ("TESTRUNS",self.all_testcalls)])
 
     def asm_snippet(self,args):
         print args.asmcode
