@@ -5,7 +5,9 @@
 #include <stdlib.h>
 INCLUDES_HERE
 
-#define PERF_ITRS 20000000
+FUNCTIONS_HERE
+
+#define PERF_ITRS 200000
 
 static inline uint64_t rdtscp(){
   uint64_t v;
