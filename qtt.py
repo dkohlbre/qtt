@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import argparse
 import subprocess
+import string
 
 HOST_C_FILE = "timer.c"
 
@@ -33,10 +34,13 @@ class QTT:
     all_testcalls = ""
     temp_file = ""
     testcount = 0
+    functions = {}
+    temp_file = "/tmp/qtt_tmp.c"
 
     def gcc_build(self):
         replace_file(HOST_C_FILE,self.temp_file,[
             ("INCLUDES_HERE",self.all_includes),
+            ("FUNCTIONS_HERE", "\n".join(self.functions.values())),
             ("TESTFUNCTIONS",self.all_tests),
             ("TESTRUNS",self.all_testcalls)])
 
@@ -120,6 +124,61 @@ class QTT:
     def add_library(self,libfiles):
         self.all_add_gcc_files.append(libfiles)
 
+    # add a c function.
+    def add_function(self, fname, function):
+        self.functions[fname] = function
+
+    def make_func(self, num, ret_s, types_s, typedargs_s, args_s):
+        # C test function
+        # double __run_test(RETTYPE (*function) (RAWTYPES),TYPEDARGS){
+        #   int ctr = 0;
+        #   uint8_t real = 0;
+        #   uint64_t st;
+        #   uint64_t end;
+        #   uint64_t offset;
+        #  runme:
+        #   st = rdtscp();
+        #   /* Offset for running the loop and rdtscp */
+        #   for(ctr=0;ctr<PERF_ITRS;ctr++){
+        #   }
+        #   end = rdtscp();
+        #   offset = end-st;
+        #   st = rdtscp();
+        #   for(ctr=0;ctr<PERF_ITRS;ctr++){
+        #     (*function)(REALARGS);
+        #   }
+        #   end = rdtscp();
+        #   if(real == 0){ real = 1; goto runme;}
+        #   /* Run everything for real, previous was just warmup */
+        #   return (end-st-offset)/(float)PERF_ITRS;
+        # }
+
+        functext = "double __run_test_"+str(num)+"("+ret_s+" (*function) ("+types_s+"),"+typedargs_s+"){\n"
+        functext +="  int ctr = 0;\n"
+        functext +="  uint8_t real = 0;\n"
+        functext +="  uint64_t st;\n"
+        functext +="  uint64_t end;\n"
+        functext +="  uint64_t offset;\n"
+        functext +=" runme:\n"
+        functext +="  st = rdtscp();\n"
+        functext +="  /* Offset for running the loop and rdtscp */\n"
+        functext +="  for(ctr=0;ctr<PERF_ITRS;ctr++){\n"
+        functext +="  }\n"
+        functext +="  end = rdtscp();\n"
+        functext +="  offset = end-st;\n"
+        functext +="  st = rdtscp();\n"
+        functext +="  for(ctr=0;ctr<PERF_ITRS;ctr++){\n"
+        functext +="    (*function)("+args_s+");\n"
+        functext +="  }\n"
+        functext +="  end = rdtscp();\n"
+        functext +="  if(real == 0){ real = 1; goto runme;}\n"
+        functext +="  /* Run everything for real, previous was just warmup */\n"
+        functext +="  return (end-st-offset)/(float)PERF_ITRS;\n"
+        functext +="}\n"
+        return functext
+
+
+
     def c_snippet(self,cfunction,typestring,arglist,setup,testnum):
 
         ret_s = typestring.split('(')[0]
@@ -148,55 +207,7 @@ class QTT:
             testruns_s += ' '*(m_len-len(printable_arg_string)+2)+"%f\\n\","
             testruns_s +="__run_test_"+str(testnum)+"("+cfunction+","+arg_string[:-1]+"));\n"
 
-        # C test function
-        # double __run_test(RETTYPE (*function) (RAWTYPES),TYPEDARGS){
-        #   int ctr = 0;
-        #   uint8_t real = 0;
-        #   uint64_t st;
-        #   uint64_t end;
-        #   uint64_t offset;
-        #  runme:
-        #   st = rdtscp();
-        #   /* Offset for running the loop and rdtscp */
-        #   for(ctr=0;ctr<PERF_ITRS;ctr++){
-        #   }
-        #   end = rdtscp();
-        #   offset = end-st;
-        #   st = rdtscp();
-        #   for(ctr=0;ctr<PERF_ITRS;ctr++){
-        #     (*function)(REALARGS);
-        #   }
-        #   end = rdtscp();
-        #   if(real == 0){ real = 1; goto runme;}
-        #   /* Run everything for real, previous was just warmup */
-        #   return (end-st-offset)/(float)PERF_ITRS;
-        # }
-
-        functext = "double __run_test_"+str(testnum)+"("+ret_s+" (*function) ("+types_s+"),"+typedargs_s+"){\n"
-        functext +="  int ctr = 0;\n"
-        functext +="  uint8_t real = 0;\n"
-        functext +="  uint64_t st;\n"
-        functext +="  uint64_t end;\n"
-        functext +="  uint64_t offset;\n"
-        functext +=" runme:\n"
-        functext +="  st = rdtscp();\n"
-        functext +="  /* Offset for running the loop and rdtscp */\n"
-        functext +="  for(ctr=0;ctr<PERF_ITRS;ctr++){\n"
-        functext +="  }\n"
-        functext +="  end = rdtscp();\n"
-        functext +="  offset = end-st;\n"
-        functext +="  st = rdtscp();\n"
-        functext +="  for(ctr=0;ctr<PERF_ITRS;ctr++){\n"
-        functext +="    (*function)("+args_s+");\n"
-        functext +="  }\n"
-        functext +="  end = rdtscp();\n"
-        functext +="  if(real == 0){ real = 1; goto runme;}\n"
-        functext +="  /* Run everything for real, previous was just warmup */\n"
-        functext +="  return (end-st-offset)/(float)PERF_ITRS;\n"
-        functext +="}"
-
-
-        return (testruns_s,functext)
+        return (testruns_s,self.make_func(testnum, ret_s, types_s, typedargs_s, args_s))
 
 
     def add_c_test(self,cfunction,typestring,arglist,libfiles="",includefiles="",tmpfile="/tmp/qtt_tmp.c",setup_string=""):
@@ -213,10 +224,58 @@ class QTT:
         self.all_tests += funtext
         self.all_testcalls += tests
 
+    def add_asm_test(self, fname, arglist, assembly, outputs, inputs, clobbers, tmpfile="/tmp/qtt_tmp.c"):
+        (tests, funtext) = self.asm_snippet(fname, arglist, assembly, outputs, inputs, clobbers, self.testcount)
+        self.testcount+=1
 
-    def asm_snippet(self,args):
-        print args.asmcode
-        print_unimp("ASM snippets")
+        self.all_tests += funtext + "\n"
+        self.all_testcalls += tests + "\n"
+
+    def asm_snippet(self, fname, arglist, assembly, outputs, inputs, clobbers, testnum):
+
+        # Make single-letter names for the function arguments
+        input_names  = ["in"  + l for l,i in zip(string.ascii_letters, inputs)]
+        output_names = ["out" + l for l,i in zip(string.ascii_letters, outputs)]
+
+        types     = ", ".join(["int64_t"        for i in range(len(input_names))])
+        typedargs = ", ".join(["int64_t %s"%(s) for s in input_names])
+        argnames  = ", ".join(["%s"%(s)         for s in input_names])
+
+        output_vars = "\n    ".join(["int64_t %s;"%(s) for s in output_names])
+
+        output_constraints = ", ".join(['"%s" (%s)'%(const, name)
+            for const,name in zip(outputs,output_names)])
+        input_constraints = ", ".join(['"%s" (%s)'%(const, name)
+            for const,name in zip(inputs,input_names)])
+        clobbers_constraints = ", ".join(['"%s"'%(name)
+            for name in clobbers])
+
+        test_function_name = "test_%s"%(fname)
+
+        asm = """__asm__ volatile(" %s "
+        : %s
+        : %s
+        : %s); """ %( assembly, output_constraints, input_constraints, clobbers_constraints)
+
+        function_type = "volatile int64_t"
+
+        function = r"""
+%s %s(%s) {
+    %s
+    %s
+    return %s;
+}""" %(function_type, test_function_name, typedargs, output_vars, asm, output_names[0])
+
+        self.add_function(test_function_name, function)
+
+        testruns = []
+        for args in arglist:
+            args = ", ".join([self.arg_to_string(a) for a in args])
+
+            testruns += [r"""printf("%s %-40s %%f\n", __run_test_%d(%s, %s));"""% \
+              (fname, args, testnum, test_function_name, args)]
+
+        return ("\n".join(testruns), self.make_func(testnum, function_type, types, typedargs, argnames))
 
 
 def qtt_getargs():
