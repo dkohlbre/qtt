@@ -27,6 +27,8 @@ int main(int argc, char* argv[]){
   printf(    "function ""     cycles\n");
   printf(    "====================\n");
 
+  SETUP
+
   TESTRUNS
 
   return 0;
