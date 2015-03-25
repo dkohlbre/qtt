@@ -35,6 +35,7 @@ class QTT:
     temp_file = ""
     testcount = 0
     functions = {}
+    setup = ""
     temp_file = "/tmp/qtt_tmp.c"
 
     def gcc_build(self):
@@ -42,14 +43,17 @@ class QTT:
             ("INCLUDES_HERE",self.all_includes),
             ("FUNCTIONS_HERE", "\n".join(self.functions.values())),
             ("TESTFUNCTIONS",self.all_tests),
+            ("SETUP", self.setup),
             ("TESTRUNS",self.all_testcalls)])
 
-        gccstring = "gcc -O -fforce-addr -std=c99 -o a.qtt -I. -L. "
+        gccstring = "gcc -O -std=c99 -o a.qtt -I. -L. "
         for f in self.all_add_gcc_files:
             if f != "":
                 if f[-2:] == '.c':
                     gccstring += "--include "+f+" "
                 elif f[-3:] == ".so":
+                    gccstring += f+" "
+                elif f[:2] == "-l":
                     gccstring += f+" "
                 else:
                     print_unimp("File type:"+f)
@@ -102,11 +106,14 @@ class QTT:
 
     def arg_to_string(self,a):
         if type(a) is str:
-            return '\"'+a+'\"'
+            return a
         elif isinstance(a,QTTvar):
             return a.s
         else:
             return str(a)
+
+    def add_setup(self, setup):
+        self.setup += setup + "\n"
 
     def add_include(self,includefiles):
         includes_s = ""
@@ -153,7 +160,7 @@ class QTT:
         #   return (end-st-offset)/(float)PERF_ITRS;
         # }
 
-        functext = "double __run_test_"+str(num)+"("+ret_s+" (*function) ("+types_s+"),"+typedargs_s+"){\n"
+        functext = "double __attribute__((noinline)) __run_test_"+str(num)+"("+ret_s+" (*function) ("+types_s+"),"+typedargs_s+"){\n"
         functext +="  int ctr = 0;\n"
         functext +="  uint8_t real = 0;\n"
         functext +="  uint64_t st;\n"
@@ -270,9 +277,9 @@ class QTT:
 
         testruns = []
         for args in arglist:
-            args = ", ".join([self.arg_to_string(a) for a in args])
+            args = ", ".join([self.arg_to_string(a) + "LL" for a in args])
 
-            testruns += [r"""printf("%s %-40s %%f\n", __run_test_%d(%s, %s));"""% \
+            testruns += [r"""printf("%s %-60s %%f\n", __run_test_%d(%s, %s));"""% \
               (fname, args, testnum, test_function_name, args)]
 
         return ("\n".join(testruns), self.make_func(testnum, function_type, types, typedargs, argnames))
