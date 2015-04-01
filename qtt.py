@@ -60,7 +60,7 @@ def cstr(string):
         return string+";\n"
 
 class QTT:
-    def __init__(self,tmpfile="/tmp/qtt_tmp.c",outfile="a.qtt",iterations=200000):
+    def __init__(self,tmpfile="/tmp/qtt_tmp.c",outfile="a.qtt",iterations=200000,use_rdtscp=False):
         self.tmpfile = tmpfile
         self.outfile = outfile
         self.iterations = iterations
@@ -69,10 +69,12 @@ class QTT:
         self.includes = []
         self.harnesses = []
         self.varlist = []
+        #TODO detect if rdtscp is available, use this for now
+        self.use_rdtscp = use_rdtscp
 
     def build(self,cc="gcc"):
         output = QTTgenerate_includes(self.includes)
-        output += QTTgenerate_magic(self.iterations)
+        output += QTTgenerate_magic(self.iterations,self.use_rdtscp)
         output += QTTgenerate_harnesses(self.harnesses)
         #TODO setup?
         output += QTTgenerate_main(self.testruns,"",self.varlist)
@@ -188,11 +190,13 @@ def QTTgenerate_includes(includes):
 
     return string
 
-def QTTgenerate_magic(iterations):
-    return '''#define PERF_ITRS '''+str(iterations)+'''
+def QTTgenerate_magic(iterations,use_rdtscp):
+    string= '''#define PERF_ITRS '''+str(iterations)+'''
 
 static inline uint64_t rdtscp(){
-  uint64_t v;
+  uint64_t v;'''
+    if use_rdtscp:
+        string +='''
   __asm__ volatile("rdtscp;"
                    "shl $32,%%rdx;"
                    "or %%rdx,%%rax;"
@@ -202,6 +206,20 @@ static inline uint64_t rdtscp(){
 
   return v;
 }'''
+
+    else:
+        string +='''
+  __asm__ volatile("cpuid;"
+                   "rdtsc;"
+                   "shl $32,%%rdx;"
+                   "or %%rdx,%%rax;"
+                   : "=a" (v)
+                   :
+                   : "%rcx","%rdx");
+
+  return v;
+}'''
+    return string
 
 def QTTgenerate_main(tests,setup,varlist):
     string = '''int main(int argc, char* argv[]){
