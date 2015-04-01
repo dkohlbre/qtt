@@ -60,9 +60,10 @@ def cstr(string):
         return string+";\n"
 
 class QTT:
-    def __init__(self,tmpfile="/tmp/qtt_tmp.c",outfile="a.qtt"):
+    def __init__(self,tmpfile="/tmp/qtt_tmp.c",outfile="a.qtt",iterations=200000):
         self.tmpfile = tmpfile
         self.outfile = outfile
+        self.iterations = iterations
         self.testruns = []
         self.libs = []
         self.includes = []
@@ -71,7 +72,7 @@ class QTT:
 
     def build(self,cc="gcc"):
         output = QTTgenerate_includes(self.includes)
-        output += QTTgenerate_magic()
+        output += QTTgenerate_magic(self.iterations)
         output += QTTgenerate_harnesses(self.harnesses)
         #TODO setup?
         output += QTTgenerate_main(self.testruns,"",self.varlist)
@@ -103,6 +104,25 @@ class QTT:
         else:
             print_info("Building succeeded, run "+self.outfile)
 
+    def run(self):
+        results = {}
+        err = False
+        proc = subprocess.Popen("./"+self.outfile,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        while proc.returncode == None:
+            (stdout,stderr) = proc.communicate()
+            if stdout is not None and not err:
+                for l in stdout.split('\n'):
+                    if "function      cycles" in l or "========" in l:
+                        continue
+                    if len(l.split()) == 3:
+                        (fn,args,val) = l.split()
+                        if fn not in results:
+                            results[fn] = {}
+                        results[fn][args] = float(val)
+            if stderr is not None:
+                if len(stderr) > 1:
+                    err = True
+        return results,err
 
     ######Start Internal Functions#######
     def add_harness(self,typestring):
@@ -168,8 +188,8 @@ def QTTgenerate_includes(includes):
 
     return string
 
-def QTTgenerate_magic():
-    return '''#define PERF_ITRS 200000
+def QTTgenerate_magic(iterations):
+    return '''#define PERF_ITRS '''+str(iterations)+'''
 
 static inline uint64_t rdtscp(){
   uint64_t v;
