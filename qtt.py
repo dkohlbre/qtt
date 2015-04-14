@@ -27,10 +27,11 @@ class QTTvaruse:
         self.setup = setup
 
 class QTTvardef:
-    def __init__(self,name,typestr,declare):
+    def __init__(self,name,typestr,declare,glbl):
         self.name = name
         self.typestr = typestr
         self.declare = declare
+        self.glbl = glbl
 
 class QTTtest:
     def __init__(self,func,harness,args,deps=None,setup=""):
@@ -50,6 +51,8 @@ def vectorver(thing):
     return (thing,)
 
 def cstr(string):
+    if string == "":
+        return "\n"
     if string[-1] == "\n":
         if string[-2] == ";":
             return string
@@ -69,20 +72,21 @@ class QTT:
         self.includes = []
         self.harnesses = []
         self.varlist = []
+        self.setup = ""
         #TODO detect if rdtscp is available, use this for now
         self.use_rdtscp = use_rdtscp
 
     def build(self,cc="gcc"):
         output = QTTgenerate_includes(self.includes)
-        output += QTTgenerate_magic(self.iterations,self.use_rdtscp)
+        output += QTTgenerate_magic(self.iterations,self.use_rdtscp,self.varlist)
         output += QTTgenerate_harnesses(self.harnesses)
         #TODO setup?
-        output += QTTgenerate_main(self.testruns,"",self.varlist)
+        output += QTTgenerate_main(self.testruns,self.setup,self.varlist)
         ftmp = open(self.tmpfile,'w')
         ftmp.write(output)
         ftmp.close()
 
-        gccstring = cc+" -O -std=c99 -o "+self.outfile+" -I. -L. "
+        gccstring = cc+" -O -std=gnu99 -o "+self.outfile+" -I. -L. "
         for lib in self.libs:
             gccstring += lib+" "
         gccstring += self.tmpfile
@@ -105,6 +109,9 @@ class QTT:
             print_info("Building has problems...")
         else:
             print_info("Building succeeded, run "+self.outfile)
+
+    def add_setup(self,setup):
+        self.setup += cstr(setup)
 
     def run(self):
         results = {}
@@ -147,8 +154,8 @@ class QTT:
         for inc in vectorver(includes):
             self.includes.append(inc)
 
-    def new_var(self,typestring,name,setup=None,declare=None):
-        self.varlist.append(QTTvardef(name,typestring,declare))
+    def new_var(self,typestring,name,setup=None,declare=None,glbl=False):
+        self.varlist.append(QTTvardef(name,typestring,declare,glbl))
         return QTTvar(name,setup)
 
 
@@ -181,7 +188,7 @@ def QTTgenerate_includes(includes):
 '''
     for i in includes:
         if "\"" not in i and "<" not in i:
-            if i[-2:] != ".h":
+            if i[-2:] != ".h" and i[-2:] != ".c":
                 string += "#include <"+i+".h>\n"
             else:
                 string += "#include <"+i+">\n"
@@ -190,7 +197,7 @@ def QTTgenerate_includes(includes):
 
     return string
 
-def QTTgenerate_magic(iterations,use_rdtscp):
+def QTTgenerate_magic(iterations,use_rdtscp,varlist):
     string= '''#define PERF_ITRS '''+str(iterations)+'''
 
 static inline uint64_t rdtscp(){
@@ -219,6 +226,12 @@ static inline uint64_t rdtscp(){
 
   return v;
 }'''
+    for v in varlist:
+        if v.declare != None and v.glbl == True:
+            string += cstr(v.declare)
+        else:
+            string += v.typestr+" "+v.name+";\n"
+
     return string
 
 def QTTgenerate_main(tests,setup,varlist):
@@ -229,7 +242,7 @@ def QTTgenerate_main(tests,setup,varlist):
     string += setup
 
     for v in varlist:
-        if v.declare != None:
+        if v.declare != None and v.glbl == False:
             string += cstr(v.declare)
         else:
             string += v.typestr+" "+v.name+";\n"
