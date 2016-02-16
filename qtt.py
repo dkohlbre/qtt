@@ -87,9 +87,9 @@ class QTT:
         ftmp.close()
 
         gccstring = cc+" -O -std=gnu99 -o "+self.outfile+" -I. -L. "
+        gccstring += self.tmpfile+" "
         for lib in self.libs:
             gccstring += lib+" "
-        gccstring += self.tmpfile
         print_info("Build command: "+gccstring)
         proc = subprocess.Popen(gccstring,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
 
