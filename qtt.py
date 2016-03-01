@@ -63,7 +63,7 @@ def cstr(string):
         return string+";\n"
 
 class QTT:
-    def __init__(self,tmpfile="/tmp/qtt_tmp.c",outfile="a.qtt",iterations=200000,use_rdtscp=False):
+    def __init__(self,tmpfile="/tmp/qtt_tmp.c",outfile="a.qtt",iterations=200000,use_rdtscp=True):
         self.tmpfile = tmpfile
         self.outfile = outfile
         self.iterations = iterations
@@ -198,16 +198,49 @@ def QTTgenerate_includes(includes):
     return string
 
 def QTTgenerate_magic(iterations,use_rdtscp,varlist):
-    string= '''#define PERF_ITRS '''+str(iterations)+'''
+    # See http://www.intel.com/content/www/us/en/embedded/training/ia-32-ia-64-benchmark-code-execution-paper.html
+    string= '''#define PERF_ITRS '''+str(iterations)
+    string+='''
 
-static inline uint64_t rdtscp(){
+
+static inline uint64_t rdtscp_start(){
+  uint64_t v;'''
+    if use_rdtscp:
+        string +='''
+  __asm__ volatile("cpuid;"
+                   "rdtsc;"
+                   "shl $32,%%rdx;"
+                   "or %%rdx,%%rax;"
+                   : "=a" (v)
+                   :
+                   : "%rcx","%rdx");
+
+  return v;
+}'''
+
+    else:
+        string +='''
+  __asm__ volatile("cpuid;"
+                   "rdtsc;"
+                   "shl $32,%%rdx;"
+                   "or %%rdx,%%rax;"
+                   : "=a" (v)
+                   :
+                   : "%rcx","%rdx");
+
+  return v;
+}'''
+
+    string+='''
+static inline uint64_t rdtscp_stop(){
   uint64_t v;'''
     if use_rdtscp:
         string +='''
   __asm__ volatile("rdtscp;"
                    "shl $32,%%rdx;"
                    "or %%rdx,%%rax;"
-                   : "=a" (v)
+                   "mov %%rax,%0;"
+                   : "=r" (v)
                    :
                    : "%rcx","%rdx");
 
@@ -274,17 +307,17 @@ def QTTgenerate_harness(typestring,num):
     functext +="  uint64_t end;\n"
     functext +="  uint64_t offset;\n"
     functext +=" runme:\n"
-    functext +="  st = rdtscp();\n"
+    functext +="  st = rdtscp_start();\n"
     functext +="  /* Offset for running the loop and rdtscp */\n"
     functext +="  for(ctr=0;ctr<PERF_ITRS;ctr++){\n"
     functext +="  }\n"
-    functext +="  end = rdtscp();\n"
+    functext +="  end = rdtscp_stop();\n"
     functext +="  offset = end-st;\n"
-    functext +="  st = rdtscp();\n"
+    functext +="  st = rdtscp_start();\n"
     functext +="  for(ctr=0;ctr<PERF_ITRS;ctr++){\n"
     functext +="    (*function)("+args_s+");\n"
     functext +="  }\n"
-    functext +="  end = rdtscp();\n"
+    functext +="  end = rdtscp_stop();\n"
     functext +="  if(real == 0){ real = 1; goto runme;}\n"
     functext +="  /* Run everything for real, previous was just warmup */\n"
     functext +="  return (end-st-offset)/(float)PERF_ITRS;\n"
