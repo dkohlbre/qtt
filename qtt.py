@@ -1,40 +1,48 @@
-#!/usr/bin/python
-import argparse
+#!/usr/bin/python3
 import subprocess
-import string
 import collections
 
+
 def print_info(s):
-    print "[QTT] "+s
+    print("[QTT] " + s)
+
 
 def print_unimp(fn):
-    print_info(fn+" is unimplemented.")
+    print_info(fn + " is unimplemented.")
+
 
 class QTTvar:
-    def __init__(self,name,setup=None):
+
+    def __init__(self, name, setup=None):
         self.name = name
         self.setup = setup
 
-    def __call__(self,*args,**kwordargs):
-        if self.setup==None:
-            return QTTvaruse(self.name,self.setup)
+    def __call__(self, *args, **kwordargs):
+        if self.setup is None:
+            return QTTvaruse(self.name, self.setup)
         else:
-            return QTTvaruse(self.name,self.setup(*args,**kwordargs))
+            return QTTvaruse(self.name, self.setup(*args, **kwordargs))
+
 
 class QTTvaruse:
-    def __init__(self,name,setup):
+
+    def __init__(self, name, setup):
         self.name = name
         self.setup = setup
 
+
 class QTTvardef:
-    def __init__(self,name,typestr,declare,glbl):
+
+    def __init__(self, name, typestr, declare, glbl):
         self.name = name
         self.typestr = typestr
         self.declare = declare
         self.glbl = glbl
 
+
 class QTTtest:
-    def __init__(self,func,harness,args,deps=None,setup=""):
+
+    def __init__(self, func, harness, args, deps=None, setup=""):
         self.func = func
         self.args = args
         self.setup = setup
@@ -42,13 +50,14 @@ class QTTtest:
 
 
 def vectorver(thing):
-    if isinstance(thing,collections.Iterable) and type(thing) is not str:
-        if len(thing) == 1 and thing[0] == None:
+    if isinstance(thing, collections.Iterable) and type(thing) is not str:
+        if len(thing) == 1 and thing[0] is None:
             return []
         return thing
     if thing is None:
         return []
     return (thing,)
+
 
 def cstr(string):
     if string == "":
@@ -56,14 +65,16 @@ def cstr(string):
     if string[-1] == "\n":
         if string[-2] == ";":
             return string
-        return string[:-1]+";\n"
+        return string[:-1] + ";\n"
     elif string[-1] == ";":
-        return string+"\n"
+        return string + "\n"
     else:
-        return string+";\n"
+        return string + ";\n"
+
 
 class QTT:
-    def __init__(self,tmpfile="/tmp/qtt_tmp.c",outfile="a.qtt",iterations=200000,use_rdtscp=True):
+    def __init__(self, tmpfile="/tmp/qtt_tmp.c",
+                 outfile="a.qtt", iterations=200000, use_rdtscp=True):
         self.tmpfile = tmpfile
         self.outfile = outfile
         self.iterations = iterations
@@ -73,97 +84,104 @@ class QTT:
         self.harnesses = []
         self.varlist = []
         self.setup = ""
-        #TODO detect if rdtscp is available, use this for now
+        # TODO detect if rdtscp is available, use this for now
         self.use_rdtscp = use_rdtscp
 
-    def build(self,cc="gcc"):
+    def build(self, cc="gcc"):
         output = QTTgenerate_includes(self.includes)
-        output += QTTgenerate_magic(self.iterations,self.use_rdtscp,self.varlist)
+        output += QTTgenerate_magic(
+            self.iterations, self.use_rdtscp, self.varlist)
         output += QTTgenerate_harnesses(self.harnesses)
-        #TODO setup?
-        output += QTTgenerate_main(self.testruns,self.setup,self.varlist)
-        ftmp = open(self.tmpfile,'w')
+        # TODO setup?
+        output += QTTgenerate_main(self.testruns, self.setup, self.varlist)
+        ftmp = open(self.tmpfile, 'w')
         ftmp.write(output)
         ftmp.close()
 
-        gccstring = cc+" -O -std=gnu99 -o "+self.outfile+" -I. -L. "
-        gccstring += self.tmpfile+" "
-        for lib in self.libs:
-            gccstring += lib+" "
-        print_info("Build command: "+gccstring)
-        proc = subprocess.Popen(gccstring,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        gccstring = "{CC} -O -std=gnu99 -o {OUTF} -I. -L. {TMP} {LIBS}".format(
+            CC=cc,
+            OUTF=self.outfile,
+            TMP=self.tmpfile,
+            LIBS=' '.join(self.libs)
+        )
+        print_info("Build command: " + gccstring)
+        proc = subprocess.Popen(gccstring, shell=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        while proc.returncode == None:
-            (stdout,stderr) = proc.communicate()
+        while proc.returncode is None:
+            (stdout, stderr) = proc.communicate()
             if stdout is not None or stderr is not None:
-                for l in stdout.split('\n'):
-                    if l != '':
-                        print "[GCC] "+l
-                for l in stderr.split('\n'):
-                    if l != '':
-                        print "[GCC] "+l
+                for line in stdout.split('\n'):
+                    if line != '':
+                        print("[GCC] " + line)
+                for line in stderr.split('\n'):
+                    if line != '':
+                        print("[GCC] " + line)
 
         if proc.returncode < 0:
-            print_info("Building failed! See "+self.tmpfile)
+            print_info("Building failed! See " + self.tmpfile)
         elif proc.returncode > 0:
             print_info("Building has problems...")
         else:
-            print_info("Building succeeded, run "+self.outfile)
+            print_info("Building succeeded, run " + self.outfile)
 
-    def add_setup(self,setup):
+    def add_setup(self, setup):
         self.setup += cstr(setup)
 
     def run(self):
         results = {}
         err = False
-        proc = subprocess.Popen("./"+self.outfile,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-        while proc.returncode == None:
-            (stdout,stderr) = proc.communicate()
+        proc = subprocess.Popen("./" + self.outfile, shell=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        while proc.returncode is None:
+            (stdout, stderr) = proc.communicate()
             if stdout is not None and not err:
                 for l in stdout.split('\n'):
                     if "function      cycles" in l or "========" in l:
                         continue
                     if len(l.split()) == 3:
-                        (fn,args,val) = l.split()
+                        (fn, args, val) = l.split()
                         if fn not in results:
                             results[fn] = {}
                         results[fn][args] = float(val)
             if stderr is not None:
                 if len(stderr) > 1:
                     err = True
-        return results,err
+        return results, err
 
-    ######Start Internal Functions#######
-    def add_harness(self,typestring):
+    # Start Internal Functions#######
+    def add_harness(self, typestring):
         if typestring in self.harnesses:
             return self.harnesses.index(typestring)
         else:
             self.harnesses.append(typestring)
-            return len(self.harnesses)-1
+            return len(self.harnesses) - 1
 
-    ######End Internal Functions#######
+    # End Internal Functions#######
 
-    def add_library(self,libfiles):
+    def add_library(self, libfiles):
         for lib in vectorver(libfiles):
             if lib[-3:] != ".so" and lib[:2] != "-l":
-                print_unimp("File type:"+f)
+                print_unimp("File type:" + lib)
                 exit(1)
             self.libs.append(lib)
 
-    def add_include(self,*includes):
+    def add_include(self, *includes):
         for inc in vectorver(includes):
             self.includes.append(inc)
 
-    def new_var(self,typestring,name,setup=None,declare=None,glbl=False):
-        self.varlist.append(QTTvardef(name,typestring,declare,glbl))
-        return QTTvar(name,setup)
+    def new_var(self, typestring, name, setup=None, declare=None, glbl=False):
+        self.varlist.append(QTTvardef(name, typestring, declare, glbl))
+        return QTTvar(name, setup)
 
-
-    def add_c_test(self,cfunc,typestring,args,libfiles=None,includefiles=None,setup=None):
+    def add_c_test(self, cfunc, typestring, args,
+                   libfiles=None, includefiles=None, setup=None):
 
         # Vectorization is comfy and easy to wear
-        if isinstance(cfunc,collections.Iterable) and type(cfunc) is not str:
-            [self.add_c_test(c,typestring,args,libfiles,includefiles,setup) for c in cfunc]
+        if isinstance(cfunc, collections.Iterable) and type(cfunc) is not str:
+            [self.add_c_test(c, typestring, args,
+                             libfiles, includefiles, setup)
+             for c in cfunc]
             return
 
         # We need one of the terrible harnesses to run the function
@@ -171,12 +189,12 @@ class QTT:
 
         # Generate test instances for each arg set
         for argt in args:
-            self.testruns.append(QTTtest(cfunc,harness,vectorver(argt),setup))
+            self.testruns.append(
+                QTTtest(cfunc, harness, vectorver(argt), setup))
 
         # Handle libfiles and includes
         self.add_library(libfiles)
         self.add_include(includefiles)
-
 
 
 def QTTgenerate_includes(includes):
@@ -189,24 +207,24 @@ def QTTgenerate_includes(includes):
     for i in includes:
         if "\"" not in i and "<" not in i:
             if i[-2:] != ".h" and i[-2:] != ".c":
-                string += "#include <"+i+".h>\n"
+                string += "#include <" + i + ".h>\n"
             else:
-                string += "#include <"+i+">\n"
+                string += "#include <" + i + ">\n"
         else:
-            string += "#include "+i+"\n"
+            string += "#include " + i + "\n"
 
     return string
 
-def QTTgenerate_magic(iterations,use_rdtscp,varlist):
-    # See http://www.intel.com/content/www/us/en/embedded/training/ia-32-ia-64-benchmark-code-execution-paper.html
-    string= '''#define PERF_ITRS '''+str(iterations)
-    string+='''
 
-
+def QTTgenerate_magic(iterations, use_rdtscp, varlist):
+    # See
+    # http://www.intel.com/content/www/us/en/embedded/training/ia-32-ia-64-benchmark-code-execution-paper.html
+    string = '''#define PERF_ITRS ''' + str(iterations)
+    string += '''
 static inline uint64_t rdtscp_start(){
   uint64_t v;'''
     if use_rdtscp:
-        string +='''
+        string += '''
   __asm__ volatile("cpuid;"
                    "rdtsc;"
                    "shl $32,%%rdx;"
@@ -219,7 +237,7 @@ static inline uint64_t rdtscp_start(){
 }'''
 
     else:
-        string +='''
+        string += '''
   __asm__ volatile("cpuid;"
                    "rdtsc;"
                    "shl $32,%%rdx;"
@@ -231,11 +249,11 @@ static inline uint64_t rdtscp_start(){
   return v;
 }'''
 
-    string+='''
+    string += '''
 static inline uint64_t rdtscp_stop(){
   uint64_t v;'''
     if use_rdtscp:
-        string +='''
+        string += '''
   __asm__ volatile("rdtscp;"
                    "shl $32,%%rdx;"
                    "or %%rdx,%%rax;"
@@ -248,7 +266,7 @@ static inline uint64_t rdtscp_stop(){
 }'''
 
     else:
-        string +='''
+        string += '''
   __asm__ volatile("cpuid;"
                    "rdtsc;"
                    "shl $32,%%rdx;"
@@ -260,14 +278,15 @@ static inline uint64_t rdtscp_stop(){
   return v;
 }'''
     for v in varlist:
-        if v.declare != None and v.glbl == True:
+        if v.declare is not None and not v.glbl:
             string += cstr(v.declare)
         else:
-            string += v.typestr+" "+v.name+";\n"
+            string += v.typestr + " " + v.name + ";\n"
 
     return string
 
-def QTTgenerate_main(tests,setup,varlist):
+
+def QTTgenerate_main(tests, setup, varlist):
     string = '''int main(int argc, char* argv[]){
   printf(    "function ""     cycles\\n");
   printf(    "====================\\n");
@@ -275,10 +294,10 @@ def QTTgenerate_main(tests,setup,varlist):
     string += setup
 
     for v in varlist:
-        if v.declare != None and v.glbl == False:
+        if v.declare is not None and not v.glbl:
             string += cstr(v.declare)
         else:
-            string += v.typestr+" "+v.name+";\n"
+            string += v.typestr + " " + v.name + ";\n"
 
     for t in tests:
         string += QTTgenerate_test_string(t)
@@ -289,39 +308,49 @@ def QTTgenerate_main(tests,setup,varlist):
 
 def QTTgenerate_harnesses(typestrings):
     string = ""
-    for (i,ts) in enumerate(typestrings):
-        string += QTTgenerate_harness(ts,i)
+    for (i, ts) in enumerate(typestrings):
+        string += QTTgenerate_harness(ts, i)
     return string
 
-def QTTgenerate_harness(typestring,num):
+
+def QTTgenerate_harness(typestring, num):
     ret_s = typestring.split('(')[0]
     types_s = typestring.split('(')[1].split(')')[0]
-    argnames = map(chr, range(0x61, 0x61+(len(types_s.split(',')))))
-    typedargs_s = ''.join([x+" "+y+',' for (x,y) in zip(types_s.split(','),argnames)])[:-1]
-    args_s = ''.join([x+"," for x in argnames])[:-1]
+    argnames = list(
+        map(chr, list(range(0x61, 0x61 + (len(types_s.split(',')))))))
+    typedargs_s = ''.join(
+        ["{X} {Y},".format(X=x, Y=y)
+         for (x, y) in zip(types_s.split(','), argnames)])[:-1]
+    args_s = ''.join([x + "," for x in argnames])[:-1]
 
-    functext = "double __attribute__((noinline)) __run_test_"+str(num)+"("+ret_s+" (*function) ("+types_s+"),"+typedargs_s+"){\n"
-    functext +="  int ctr = 0;\n"
-    functext +="  uint8_t real = 0;\n"
-    functext +="  uint64_t st;\n"
-    functext +="  uint64_t end;\n"
-    functext +="  uint64_t offset;\n"
-    functext +=" runme:\n"
-    functext +="  st = rdtscp_start();\n"
-    functext +="  /* Offset for running the loop and rdtscp */\n"
-    functext +="  for(ctr=0;ctr<PERF_ITRS;ctr++){\n"
-    functext +="  }\n"
-    functext +="  end = rdtscp_stop();\n"
-    functext +="  offset = end-st;\n"
-    functext +="  st = rdtscp_start();\n"
-    functext +="  for(ctr=0;ctr<PERF_ITRS;ctr++){\n"
-    functext +="    (*function)("+args_s+");\n"
-    functext +="  }\n"
-    functext +="  end = rdtscp_stop();\n"
-    functext +="  if(real == 0){ real = 1; goto runme;}\n"
-    functext +="  /* Run everything for real, previous was just warmup */\n"
-    functext +="  return (end-st-offset)/(float)PERF_ITRS;\n"
-    functext +="}\n"
+    functext = """
+double __attribute__((noinline)) __run_test_{NUM}({RET} (*function) ({TYPES}),{TYPEDARGS}){{
+  int ctr = 0;
+  uint8_t real = 0;
+  uint64_t st;
+  uint64_t end;
+  uint64_t offset;
+ runme:
+  st = rdtscp_start();
+  /* Offset for running the loop and rdtscp */
+  for(ctr=0;ctr<PERF_ITRS;ctr++){{
+  }}
+  end = rdtscp_stop();
+  offset = end-st;
+  st = rdtscp_start();
+  for(ctr=0;ctr<PERF_ITRS;ctr++){{
+    (*function)({ARGS});
+  }}
+  end = rdtscp_stop();
+  if(real == 0){{ real = 1; goto runme;}}
+  /* Run everything for real, previous was just warmup */
+  return (end-st-offset)/(float)PERF_ITRS;
+}}
+""".format(NUM=str(num),
+           RET=ret_s,
+           TYPES=types_s,
+           TYPEDARGS=typedargs_s,
+           ARGS=args_s)
 
     return functext
 
@@ -331,18 +360,18 @@ def QTTgenerate_test_string(test):
 
     argstring = ""
     for v in test.args:
-        if isinstance(v,QTTvaruse):
+        if isinstance(v, QTTvaruse):
             if v.setup is not None:
-                setup+=cstr(v.setup)
-            argstring += ","+v.name
+                setup += cstr(v.setup)
+            argstring += "," + v.name
         elif type(v) is str:
-            argstring += ",\""+v+"\""
+            argstring += ",\"" + v + "\""
         else:
-            argstring += ","+str(v)
+            argstring += "," + str(v)
 
-    string = "printf(\""+test.func+" "+argstring[1:].replace('\"','\\"')
-    string += ' '*(len(argstring)+2)+"%f\\n\","
+    string = "printf(\"" + test.func + " " + argstring[1:].replace('\"', '\\"')
+    string += ' ' * (len(argstring) + 2) + "%f\\n\","
 
-    string += "__run_test_"+str(test.harness)+"("+test.func+argstring
+    string += "__run_test_" + str(test.harness) + "(" + test.func + argstring
     string += "));\n"
-    return setup+string
+    return setup + string
