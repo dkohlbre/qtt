@@ -111,10 +111,10 @@ class QTT:
         while proc.returncode is None:
             (stdout, stderr) = proc.communicate()
             if stdout is not None or stderr is not None:
-                for line in stdout.split('\n'):
+                for line in stdout.splitlines():
                     if line != '':
                         print("[GCC] " + line)
-                for line in stderr.split('\n'):
+                for line in stderr.splitlines():
                     if line != '':
                         print("[GCC] " + line)
 
