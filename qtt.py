@@ -76,12 +76,15 @@ class QTT:
         #TODO detect if rdtscp is available, use this for now
         self.use_rdtscp = use_rdtscp
 
-    def build(self,cc="gcc"):
+    def build(self,cc="gcc",stats=False):
         output = QTTgenerate_includes(self.includes)
         output += QTTgenerate_magic(self.iterations,self.use_rdtscp,self.varlist)
-        output += QTTgenerate_harnesses(self.harnesses)
+        if stats:
+            output += QTTgenerate_stats_harnesses(self.harnesses)
+        else:
+            output += QTTgenerate_harnesses(self.harnesses)
         #TODO setup?
-        output += QTTgenerate_main(self.testruns,self.setup,self.varlist)
+        output += QTTgenerate_main(self.testruns,self.setup,self.varlist,stats)
         ftmp = open(self.tmpfile,'w')
         ftmp.write(output)
         ftmp.close()
@@ -109,6 +112,8 @@ class QTT:
             print_info("Building has problems...")
         else:
             print_info("Building succeeded, run "+self.outfile)
+
+        return proc.returncode
 
     def add_setup(self,setup):
         self.setup += cstr(setup)
@@ -216,10 +221,12 @@ static inline uint64_t rdtscp(){
 
     else:
         string +='''
-  __asm__ volatile("cpuid;"
+  __asm__ volatile("push %%rbx;"
+                   "cpuid;"
                    "rdtsc;"
                    "shl $32,%%rdx;"
                    "or %%rdx,%%rax;"
+                   "pop %%rbx;"
                    : "=a" (v)
                    :
                    : "%rcx","%rdx");
@@ -234,8 +241,11 @@ static inline uint64_t rdtscp(){
 
     return string
 
-def QTTgenerate_main(tests,setup,varlist):
+def QTTgenerate_main(tests,setup,varlist,stats):
     string = '''int main(int argc, char* argv[]){
+  int i;
+  double avg;
+  uint32_t* result;
   printf(    "function ""     cycles\\n");
   printf(    "====================\\n");
 '''
@@ -248,7 +258,10 @@ def QTTgenerate_main(tests,setup,varlist):
             string += v.typestr+" "+v.name+";\n"
 
     for t in tests:
-        string += QTTgenerate_test_string(t)
+        if stats:
+            string += QTTgenerate_stats_test_string(t)
+        else:
+            string += QTTgenerate_test_string(t)
 
     string += "}"
     return string
@@ -260,6 +273,13 @@ def QTTgenerate_harnesses(typestrings):
         string += QTTgenerate_harness(ts,i)
     return string
 
+def QTTgenerate_stats_harnesses(typestrings):
+    string = ""
+    for (i,ts) in enumerate(typestrings):
+        string += QTTgenerate_stats_harness(ts,i)
+    return string
+
+
 def QTTgenerate_harness(typestring,num):
     ret_s = typestring.split('(')[0]
     types_s = typestring.split('(')[1].split(')')[0]
@@ -267,30 +287,74 @@ def QTTgenerate_harness(typestring,num):
     typedargs_s = ''.join([x+" "+y+',' for (x,y) in zip(types_s.split(','),argnames)])[:-1]
     args_s = ''.join([x+"," for x in argnames])[:-1]
 
-    functext = "double __attribute__((noinline)) __run_test_"+str(num)+"("+ret_s+" (*function) ("+types_s+"),"+typedargs_s+"){\n"
-    functext +="  int ctr = 0;\n"
-    functext +="  uint8_t real = 0;\n"
-    functext +="  uint64_t st;\n"
-    functext +="  uint64_t end;\n"
-    functext +="  uint64_t offset;\n"
-    functext +=" runme:\n"
-    functext +="  st = rdtscp();\n"
-    functext +="  /* Offset for running the loop and rdtscp */\n"
-    functext +="  for(ctr=0;ctr<PERF_ITRS;ctr++){\n"
-    functext +="  }\n"
-    functext +="  end = rdtscp();\n"
-    functext +="  offset = end-st;\n"
-    functext +="  st = rdtscp();\n"
-    functext +="  for(ctr=0;ctr<PERF_ITRS;ctr++){\n"
-    functext +="    (*function)("+args_s+");\n"
-    functext +="  }\n"
-    functext +="  end = rdtscp();\n"
-    functext +="  if(real == 0){ real = 1; goto runme;}\n"
-    functext +="  /* Run everything for real, previous was just warmup */\n"
-    functext +="  return (end-st-offset)/(float)PERF_ITRS;\n"
-    functext +="}\n"
+    functext = '''double __attribute__((noinline)) __run_test_'''+str(num)+'''('''+ret_s+''' (*function) ('''+types_s+'''),'''+typedargs_s+'''){
+     int ctr = 0;
+     uint8_t real = 0;
+     uint64_t st;
+     uint64_t end;
+     uint64_t offset;
+    runme:
+     st = rdtscp();
+     /* Offset for running the loop and rdtscp */
+     for(ctr=0;ctr<PERF_ITRS;ctr++){
+     }
+     end = rdtscp();
+     offset = end-st;
+     st = rdtscp();
+     for(ctr=0;ctr<PERF_ITRS;ctr++){
+       (*function)('''+args_s+''');
+     }
+     end = rdtscp();
+     if(real == 0){ real = 1; goto runme;}
+     /* Run everything for real, previous was just warmup */
+     return (end-st-offset)/(float)PERF_ITRS;
+    }'''
 
     return functext
+
+def QTTgenerate_stats_harness(typestring,num):
+    ret_s = typestring.split('(')[0]
+    types_s = typestring.split('(')[1].split(')')[0]
+    argnames = map(chr, range(0x61, 0x61+(len(types_s.split(',')))))
+    typedargs_s = ''.join([x+" "+y+',' for (x,y) in zip(types_s.split(','),argnames)])[:-1]
+    args_s = ''.join([x+"," for x in argnames])[:-1]
+
+    functext = '''uint32_t* __attribute__((noinline)) __run_test_'''+str(num)+'''('''+ret_s+''' (*function) ('''+types_s+'''),'''+typedargs_s+'''){
+     int ctr = 0;
+     uint8_t real = 0;
+     uint64_t st;
+     uint64_t end;
+     uint64_t offset;
+     uint32_t* results;
+     if (PERF_ITRS > (SIZE_MAX/sizeof(uint32_t))){
+        exit(-1);
+     }
+     results = malloc(sizeof(uint32_t)*PERF_ITRS);
+     if (results == NULL){
+        exit(-1);
+     }
+
+    runme:
+     st = rdtscp();
+     /* Offset for running the loop and rdtscp */
+     for(ctr=0;ctr<PERF_ITRS;ctr++){
+     }
+     end = rdtscp();
+     offset = end-st;
+     for(ctr=0;ctr<PERF_ITRS;ctr++){
+       st = rdtscp();
+       (*function)('''+args_s+''');
+       end = rdtscp();
+       results[ctr] = (uint32_t)(end-st);
+     }
+
+     if(real == 0){ real = 1; goto runme;}
+     /* Run everything for real, previous was just warmup */
+     return results;
+    }'''
+
+    return functext
+
 
 
 def QTTgenerate_test_string(test):
@@ -312,4 +376,27 @@ def QTTgenerate_test_string(test):
 
     string += "__run_test_"+str(test.harness)+"("+test.func+argstring
     string += "));\n"
+    return setup+string
+
+def QTTgenerate_stats_test_string(test):
+    setup = test.setup
+
+    argstring = ""
+    for v in test.args:
+        if isinstance(v,QTTvaruse):
+            if v.setup is not None:
+                setup+=cstr(v.setup)
+            argstring += ","+v.name
+        elif type(v) is str:
+            argstring += ",\""+v+"\""
+        else:
+            argstring += ","+str(v)
+
+    string = "result = __run_test_"+str(test.harness)+"("+test.func+argstring+");\n"
+    string += "avg=0;\n  for(i=0;i<PERF_ITRS;i++) avg+=result[i];\n"
+    string += "printf(\""+test.func+" "+argstring[1:].replace('\"','\\"')
+    string += ' '*(len(argstring)+2)+"%f\\n\","
+
+    string += "avg/PERF_ITRS"
+    string += ");\n  free(result);\n"
     return setup+string
