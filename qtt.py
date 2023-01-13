@@ -50,7 +50,7 @@ class QTTtest:
 
 
 def vectorver(thing):
-    if isinstance(thing, collections.Iterable) and type(thing) is not str:
+    if isinstance(thing, collections.abc.Iterable) and type(thing) is not str:
         if len(thing) == 1 and thing[0] is None:
             return []
         return thing
@@ -178,7 +178,7 @@ class QTT:
                    libfiles=None, includefiles=None, setup=None):
 
         # Vectorization is comfy and easy to wear
-        if isinstance(cfunc, collections.Iterable) and type(cfunc) is not str:
+        if isinstance(cfunc, collections.abc.Iterable) and type(cfunc) is not str:
             [self.add_c_test(c, typestring, args,
                              libfiles, includefiles, setup)
              for c in cfunc]
